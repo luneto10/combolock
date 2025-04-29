@@ -1,9 +1,10 @@
-/**************************************************************************//**
+/**************************************************************************/
+/**
  *
  * @file rotary-encoder.c
  *
- * @author (STUDENTS -- TYPE YOUR NAME HERE)
- * @author (STUDENTS -- TYPE YOUR NAME HERE)
+ * @author Luciano Carvalho
+ * @author Lucas Coelho
  *
  * @brief Code to determine the direction that a rotary encoder is turning.
  *
@@ -14,15 +15,21 @@
  * ComboLock solution (c) the above-named students
  */
 
+// clang-format off
 #include <CowPi.h>
 #include "interrupt_support.h"
 #include "rotary-encoder.h"
+// clang-format on
 
-#define A_WIPER_PIN         (16)
-#define B_WIPER_PIN         (A_WIPER_PIN + 1)
+#define A_WIPER_PIN (16)
+#define B_WIPER_PIN (A_WIPER_PIN + 1)
 
 typedef enum {
-    HIGH_HIGH, HIGH_LOW, LOW_LOW, LOW_HIGH, UNKNOWN
+    HIGH_HIGH,
+    HIGH_LOW,
+    LOW_LOW,
+    LOW_HIGH,
+    UNKNOWN
 } rotation_state_t;
 
 volatile cowpi_ioport_t *ioport = (cowpi_ioport_t *)(0xD0000000);
@@ -35,7 +42,7 @@ static void handle_quadrature_interrupt();
 
 void initialize_rotary_encoder() {
     cowpi_set_pullup_input_pins((1 << A_WIPER_PIN) | (1 << B_WIPER_PIN));
-    state = HIGH_HIGH; 
+    state = HIGH_HIGH;
 
     clockwise_count = 0;
     counterclockwise_count = 0;
@@ -65,36 +72,35 @@ static void handle_quadrature_interrupt() {
     uint8_t quadrature = get_quadrature();
 
     switch (quadrature) {
-        case 0b00:
-            if (last_state == HIGH_LOW) {
-                clockwise_count++;
-                direction = CLOCKWISE;
-            }
-            else if (last_state == LOW_HIGH) {
-                counterclockwise_count++;
-                direction = COUNTERCLOCKWISE;
-            }
-            state = LOW_LOW;
-            break;
+    case 0b00:
+        if (last_state == HIGH_LOW) {
+            clockwise_count++;
+            direction = CLOCKWISE;
+        } else if (last_state == LOW_HIGH) {
+            counterclockwise_count++;
+            direction = COUNTERCLOCKWISE;
+        }
+        state = LOW_LOW;
+        break;
 
-        case 0b01:
-            if (last_state == HIGH_HIGH || last_state == LOW_LOW) {
-                state = LOW_HIGH;
-            }
-            break;
+    case 0b01:
+        if (last_state == HIGH_HIGH || last_state == LOW_LOW) {
+            state = LOW_HIGH;
+        }
+        break;
 
-        case 0b10:
-            if (last_state == HIGH_HIGH || last_state == LOW_LOW) {
-                state = HIGH_LOW;
-            }
-            break;
+    case 0b10:
+        if (last_state == HIGH_HIGH || last_state == LOW_LOW) {
+            state = HIGH_LOW;
+        }
+        break;
 
-        case 0b11: 
-            state = HIGH_HIGH;
-            break;
+    case 0b11:
+        state = HIGH_HIGH;
+        break;
 
-        default:
-            break;
+    default:
+        break;
     }
 
     last_state = state;

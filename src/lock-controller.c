@@ -1,9 +1,10 @@
-/**************************************************************************//**
+/**************************************************************************/
+/**
  *
  * @file lock-controller.c
  *
- * @author (STUDENTS -- TYPE YOUR NAME HERE)
- * @author (STUDENTS -- TYPE YOUR NAME HERE)
+ * @author Luciano Carvalho
+ * @author Lucas Coelho
  *
  * @brief Code to implement the "combination lock" mode.
  *
@@ -14,13 +15,15 @@
  * ComboLock solution (c) the above-named students
  */
 
+// clang-format off
 #include <CowPi.h>
 #include "display.h"
 #include "lock-controller.h"
 #include "rotary-encoder.h"
 #include "servomotor.h"
+// clang-format on
 
-static uint8_t combination[3] __attribute__((section (".uninitialized_ram.")));
+static uint8_t combination[3] __attribute__((section(".uninitialized_ram.")));
 
 uint8_t const *get_combination() {
     return combination;

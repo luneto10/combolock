@@ -42,17 +42,17 @@ char *test_servo(char *buffer) {
         center_servo();
         sprintf(buffer, "SERVO: center");
     }
-    // Requirement 3a: if button not pressed and left switch is left → full CW
+    // Requirement 3a: if button not pressed and left switch is left -> full CW
     else if (cowpi_left_switch_is_in_left_position()) {
         rotate_full_clockwise();
         sprintf(buffer, "SERVO: left");
     }
-    // Requirement 3b: if button not pressed and left switch is right → full CCW
+    // Requirement 3b: if button not pressed and left switch is right -> full CCW
     else {
         rotate_full_counterclockwise();
         sprintf(buffer, "SERVO: right");
     }
-    return buffer; // combolock.c will call display_string(row, buffer)
+    return buffer;
 }
 
 void center_servo() {

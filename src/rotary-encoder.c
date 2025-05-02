@@ -1,10 +1,9 @@
-/**************************************************************************/
-/**
+/**************************************************************************//**
  *
  * @file rotary-encoder.c
  *
- * @author Luciano Carvalho
- * @author Lucas Coelho
+ * @author (STUDENTS -- TYPE YOUR NAME HERE)
+ * @author (STUDENTS -- TYPE YOUR NAME HERE)
  *
  * @brief Code to determine the direction that a rotary encoder is turning.
  *
@@ -15,21 +14,15 @@
  * ComboLock solution (c) the above-named students
  */
 
-// clang-format off
 #include <CowPi.h>
 #include "interrupt_support.h"
 #include "rotary-encoder.h"
-// clang-format on
 
 #define A_WIPER_PIN (16)
 #define B_WIPER_PIN (A_WIPER_PIN + 1)
 
 typedef enum {
-    HIGH_HIGH,
-    HIGH_LOW,
-    LOW_LOW,
-    LOW_HIGH,
-    UNKNOWN
+    HIGH_HIGH, HIGH_LOW, LOW_LOW, LOW_HIGH, UNKNOWN
 } rotation_state_t;
 
 volatile cowpi_ioport_t *ioport = (cowpi_ioport_t *)(0xD0000000);
@@ -42,7 +35,9 @@ static void handle_quadrature_interrupt();
 
 void initialize_rotary_encoder() {
     cowpi_set_pullup_input_pins((1 << A_WIPER_PIN) | (1 << B_WIPER_PIN));
-    state = HIGH_HIGH;
+
+    state = get_quadrature();
+    direction = STATIONARY;
 
     clockwise_count = 0;
     counterclockwise_count = 0;
@@ -53,7 +48,7 @@ void initialize_rotary_encoder() {
 uint8_t get_quadrature() {
     uint8_t A = (ioport->input >> A_WIPER_PIN) & 0x1;
     uint8_t B = (ioport->input >> B_WIPER_PIN) & 0x1;
-    return (A << 0) | (B << 1);
+    return (B << 1) | (A << 0) ;
 }
 
 char *count_rotations(char *buffer) {
@@ -68,40 +63,49 @@ direction_t get_direction() {
 }
 
 static void handle_quadrature_interrupt() {
-    static rotation_state_t last_state = HIGH_HIGH;
+    static rotation_state_t last_state;
+    static bool first_call = true;
+    if (first_call) {
+        last_state = state;
+        first_call = false;
+    }
+
+     // Lê o estado FÍSICO atual dos pinos (valor numérico 0b00 a 0b11)
     uint8_t quadrature = get_quadrature();
 
+    // Guarda o estado LÓGICO que a máquina tinha *antes* desta interrupção (tipo enum)
+    rotation_state_t state_before_interrupt = state;
+
+    rotation_state_t next_state = state_before_interrupt; 
+
     switch (quadrature) {
-    case 0b00:
-        if (last_state == HIGH_LOW) {
-            clockwise_count++;
-            direction = CLOCKWISE;
-        } else if (last_state == LOW_HIGH) {
-            counterclockwise_count++;
-            direction = COUNTERCLOCKWISE;
-        }
-        state = LOW_LOW;
-        break;
+        case 0b00:
+            if (state == HIGH_LOW && last_state == HIGH_HIGH) {
+                clockwise_count++;
+                direction = CLOCKWISE;
 
-    case 0b01:
-        if (last_state == HIGH_HIGH || last_state == LOW_LOW) {
-            state = LOW_HIGH;
-        }
-        break;
+            }
 
-    case 0b10:
-        if (last_state == HIGH_HIGH || last_state == LOW_LOW) {
-            state = HIGH_LOW;
-        }
-        break;
+            else if (state == LOW_HIGH && last_state == HIGH_HIGH) {
+                counterclockwise_count++;
+                direction = COUNTERCLOCKWISE;
+            }
+            next_state = LOW_LOW;
+            break;
 
-    case 0b11:
-        state = HIGH_HIGH;
-        break;
+        case 0b01:
+            next_state = LOW_HIGH;
+            break;
 
-    default:
-        break;
+        case 0b10:
+            next_state = HIGH_LOW;
+            break;
+
+        case 0b11:
+            next_state = HIGH_HIGH;
+            break;
     }
 
     last_state = state;
+    state = next_state;
 }

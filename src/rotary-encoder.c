@@ -17,6 +17,7 @@
 #include <CowPi.h>
 #include "interrupt_support.h"
 #include "rotary-encoder.h"
+#include "display.h"
 
 #define A_WIPER_PIN (16)
 #define B_WIPER_PIN (A_WIPER_PIN + 1)
@@ -25,6 +26,8 @@ typedef enum {
     HIGH_HIGH, HIGH_LOW, LOW_LOW, LOW_HIGH, UNKNOWN
 } rotation_state_t;
 
+char debug_buffer[22];
+const char *states[]= {"L_L", "L_H", "H_L", "H_H", "U_K"};
 volatile cowpi_ioport_t *ioport = (cowpi_ioport_t *)(0xD0000000);
 static rotation_state_t volatile state;
 static direction_t volatile direction = STATIONARY;
@@ -64,33 +67,27 @@ direction_t get_direction() {
 
 static void handle_quadrature_interrupt() {
     static rotation_state_t last_state;
-    static bool first_call = true;
-    if (first_call) {
-        last_state = state;
-        first_call = false;
-    }
+    bool canUpdate = true;
 
-     // Lê o estado FÍSICO atual dos pinos (valor numérico 0b00 a 0b11)
     uint8_t quadrature = get_quadrature();
 
-    // Guarda o estado LÓGICO que a máquina tinha *antes* desta interrupção (tipo enum)
-    rotation_state_t state_before_interrupt = state;
-
-    rotation_state_t next_state = state_before_interrupt; 
+    rotation_state_t next_state = last_state;
 
     switch (quadrature) {
         case 0b00:
-            if (state == HIGH_LOW && last_state == HIGH_HIGH) {
-                clockwise_count++;
-                direction = CLOCKWISE;
-
+            if (canUpdate) {
+                if (state == HIGH_LOW) {
+                    clockwise_count++;
+                    direction = CLOCKWISE;
+    
+                }
+    
+                else if (state == LOW_HIGH) {
+                    counterclockwise_count++;
+                    direction = COUNTERCLOCKWISE;
+                }
+                next_state = LOW_LOW;
             }
-
-            else if (state == LOW_HIGH && last_state == HIGH_HIGH) {
-                counterclockwise_count++;
-                direction = COUNTERCLOCKWISE;
-            }
-            next_state = LOW_LOW;
             break;
 
         case 0b01:
@@ -103,6 +100,7 @@ static void handle_quadrature_interrupt() {
 
         case 0b11:
             next_state = HIGH_HIGH;
+            canUpdate = false;
             break;
     }
 

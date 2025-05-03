@@ -1,7 +1,7 @@
 /**************************************************************************/
 /**
  *
- * @file rotary-encoder.c
+ * @file servomotor.c
  *
  * @author Luciano Carvalho
  * @author Lucas Coelho

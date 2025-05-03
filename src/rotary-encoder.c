@@ -1,9 +1,10 @@
-/**************************************************************************//**
+/**************************************************************************/
+/**
  *
  * @file rotary-encoder.c
  *
- * @author (STUDENTS -- TYPE YOUR NAME HERE)
- * @author (STUDENTS -- TYPE YOUR NAME HERE)
+ * @author Luciano Carvalho
+ * @author Lucas Coelho
  *
  * @brief Code to determine the direction that a rotary encoder is turning.
  *
@@ -14,20 +15,26 @@
  * ComboLock solution (c) the above-named students
  */
 
+// clang-format off
 #include <CowPi.h>
 #include "interrupt_support.h"
 #include "rotary-encoder.h"
 #include "display.h"
+// clang-format on
 
 #define A_WIPER_PIN (16)
 #define B_WIPER_PIN (A_WIPER_PIN + 1)
 
 typedef enum {
-    HIGH_HIGH, HIGH_LOW, LOW_LOW, LOW_HIGH, UNKNOWN
+    HIGH_HIGH,
+    HIGH_LOW,
+    LOW_LOW,
+    LOW_HIGH,
+    UNKNOWN
 } rotation_state_t;
 
 char debug_buffer[22];
-const char *states[]= {"L_L", "L_H", "H_L", "H_H", "U_K"};
+const char *states[] = {"L_L", "L_H", "H_L", "H_H", "U_K"};
 volatile cowpi_ioport_t *ioport = (cowpi_ioport_t *)(0xD0000000);
 static rotation_state_t volatile state;
 static direction_t volatile direction = STATIONARY;
@@ -51,7 +58,7 @@ void initialize_rotary_encoder() {
 uint8_t get_quadrature() {
     uint8_t A = (ioport->input >> A_WIPER_PIN) & 0x1;
     uint8_t B = (ioport->input >> B_WIPER_PIN) & 0x1;
-    return (B << 1) | (A << 0) ;
+    return (B << 1) | (A << 0);
 }
 
 char *count_rotations(char *buffer) {
@@ -74,34 +81,34 @@ static void handle_quadrature_interrupt() {
     rotation_state_t next_state = last_state;
 
     switch (quadrature) {
-        case 0b00:
-            if (canUpdate) {
-                if (state == HIGH_LOW) {
-                    clockwise_count++;
-                    direction = CLOCKWISE;
-    
-                }
-    
-                else if (state == LOW_HIGH) {
-                    counterclockwise_count++;
-                    direction = COUNTERCLOCKWISE;
-                }
-                next_state = LOW_LOW;
+    case 0b00:
+        if (canUpdate) {
+            if (state == HIGH_LOW) {
+                clockwise_count++;
+                direction = CLOCKWISE;
+
             }
-            break;
 
-        case 0b01:
-            next_state = LOW_HIGH;
-            break;
+            else if (state == LOW_HIGH) {
+                counterclockwise_count++;
+                direction = COUNTERCLOCKWISE;
+            }
+            next_state = LOW_LOW;
+        }
+        break;
 
-        case 0b10:
-            next_state = HIGH_LOW;
-            break;
+    case 0b01:
+        next_state = LOW_HIGH;
+        break;
 
-        case 0b11:
-            next_state = HIGH_HIGH;
-            canUpdate = false;
-            break;
+    case 0b10:
+        next_state = HIGH_LOW;
+        break;
+
+    case 0b11:
+        next_state = HIGH_HIGH;
+        canUpdate = false;
+        break;
     }
 
     last_state = state;

@@ -73,41 +73,32 @@ direction_t get_direction() {
 }
 
 static void handle_quadrature_interrupt() {
-    static rotation_state_t last_state;
-    bool canUpdate = true;
-
+    static rotation_state_t last_state = HIGH_HIGH; // Initialize to a valid state
     uint8_t quadrature = get_quadrature();
-
-    rotation_state_t next_state = last_state;
+    rotation_state_t next_state = state; // Initialize next_state to current state
 
     switch (quadrature) {
-    case 0b00:
-        if (canUpdate) {
-            if (state == HIGH_LOW) {
-                clockwise_count++;
-                direction = CLOCKWISE;
-
-            }
-
-            else if (state == LOW_HIGH) {
-                counterclockwise_count++;
-                direction = COUNTERCLOCKWISE;
-            }
-            next_state = LOW_LOW;
+    case 0b00: // LOW_LOW
+        if (state == HIGH_LOW && last_state == HIGH_HIGH) {
+            clockwise_count++;
+            direction = CLOCKWISE;
+        } else if (state == LOW_HIGH && last_state == HIGH_HIGH) {
+            counterclockwise_count++;
+            direction = COUNTERCLOCKWISE;
         }
+        next_state = LOW_LOW;
         break;
 
-    case 0b01:
+    case 0b01: // LOW_HIGH
         next_state = LOW_HIGH;
         break;
 
-    case 0b10:
+    case 0b10: // HIGH_LOW
         next_state = HIGH_LOW;
         break;
 
-    case 0b11:
+    case 0b11: // HIGH_HIGH
         next_state = HIGH_HIGH;
-        canUpdate = false;
         break;
     }
 

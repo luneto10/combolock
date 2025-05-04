@@ -39,16 +39,18 @@ static volatile uint8_t current_digit;
 static volatile uint8_t bad_tries;
 static volatile uint8_t pass_count[3];
 
-static volatile char new_combo[3];
-static volatile char confirm_combo[3];
+static volatile char new_combo[6];
+static volatile char confirm_combo[6];
 static volatile uint8_t change_phase;
 static volatile uint8_t change_index;
 static volatile uint8_t starter_flag;
 
+static volatile cowpi_timer_t *timer;
+
 static bool is_attempt_correct(void);
 static void handle_attempt(void);
 static void display_entry(void);
-static void display_three(volatile char *vals, uint8_t count);
+static uint32_t get_microseconds(void);
 static void reset_entry();
 
 uint8_t const *get_combination() {
@@ -68,6 +70,8 @@ void initialize_lock_controller() {
         force_combination_reset();
         starter_flag++;
     }
+
+    timer = (cowpi_timer_t *)(0x40054000);
 
     mode = LOCKED;
     bad_tries = 0;
@@ -205,73 +209,112 @@ void control_lock() {
         bool new_k = (raw != '\0' && last_key == '\0');
         last_key = raw;
 
-        // Map raw key to numeric 0–15
-        uint8_t key = 0xFF;
-        if (new_k) {
-            if (raw >= '0' && raw <= '9') {
-                key = raw - '0';
-            } else if (raw >= 'A' && raw <= 'F') {
-                key = 10 + (raw - 'A');
-            }
+        // Only accept numeric digits 0–9
+        uint8_t digit = 0xFF;
+        if (new_k && raw >= '0' && raw <= '9') {
+            digit = raw - '0';
         }
 
-        // Finish change when slide‐switch -> left
+        // When switch goes back to left, try to commit
         if (cowpi_left_switch_is_in_left_position()) {
+            // Incomplete if still in first entry or confirm < 6 digits
+            bool incomplete = (change_phase == 0) || (change_phase == 1 && change_index < 6);
 
-            bool incomplete = (change_phase == 0) || (change_phase == 1 && change_index < 3);
+            // Match only if all six digits equal
             bool match = true;
-            for (int i = 0; i < 3; i++) {
+            for (int i = 0; i < 6; i++) {
                 if ((new_combo[i] != confirm_combo[i]) && match) {
                     match = false;
                 }
             }
 
-            if (incomplete || !match) {
-                display_string(2, "NO CHANGE");
-            } else {
-                for (int i = 0; i < 3; i++) {
-                    combination[i] = new_combo[i];
+            // Valid only if all digits are lower then 15
+            bool invalid = false;
+            for (int i = 0; i < 3; i++) {
+                int val = new_combo[2 * i] * 10 + new_combo[2 * i + 1];
+                if ((val > 15) && !invalid) {
+                    invalid = true;
                 }
-                display_string(2, "CHANGED");
             }
 
-            for (volatile uint32_t i = 0; i < 10000; ++i) {
-                // Busy wait
+            if (incomplete || !match || invalid) {
+                display_string(2, "NO CHANGE");
+                display_string(4, "");
+                display_string(5, "");
+            } else {
+                for (int i = 0; i < 3; i++) {
+                    combination[i] = new_combo[2 * i] * 10 + new_combo[2 * i + 1];
+                }
+                display_string(2, "CHANGED");
+                display_string(5, "");
             }
 
             mode = UNLOCKED;
             change_phase = change_index = 0;
             last_key = '\0';
-
             break;
         }
 
-        // Still CHANGING: collect new or confirm
+        // still CHANGING: collect digits
         if (change_phase == 0) {
-            // ENTER NEW
+            // start first entry
             if (change_index == 0) {
-                display_string(1, "ENTER NEW COMBO");
-                for (int i = 0; i < 3; i++)
+                display_string(1, "ENTER");
+                display_string(4, "__-__-__");
+                for (int i = 0; i < 6; i++)
                     new_combo[i] = 0xFF;
             }
-            if (key <= 15 && change_index < 3) {
-                new_combo[change_index++] = key;
-                display_three(new_combo, change_index);
+            if (digit <= 9 && change_index < 6) {
+                new_combo[change_index++] = digit;
             }
-            if (change_index == 3) {
+            // update display after each press
+            {
+                char buf[9];
+                for (int grp = 0; grp < 3; grp++) {
+                    int idx = 2 * grp;
+                    // tens digit
+                    buf[3 * grp + 0] = (change_index > idx)
+                                           ? ('0' + new_combo[idx])
+                                           : '_';
+                    // ones digit
+                    buf[3 * grp + 1] = (change_index > idx + 1)
+                                           ? ('0' + new_combo[idx + 1])
+                                           : '_';
+                    // dash or terminator
+                    buf[3 * grp + 2] = (grp < 2 ? '-' : '\0');
+                }
+                buf[8] = '\0';
+                display_string(4, buf);
+            }
+            // once six digits entered, go to confirmation
+            if (change_index == 6) {
                 change_phase = 1;
                 change_index = 0;
-                display_string(1, "RE-ENTER COMBO");
-            }
-        } else {
-            // CONFIRM
-            if (change_index == 0) {
-                for (int i = 0; i < 3; i++)
+                display_string(1, "RE-ENTER");
+                for (int i = 0; i < 6; i++)
                     confirm_combo[i] = 0xFF;
             }
-            if (key <= 15 && change_index < 3) {
-                confirm_combo[change_index++] = key;
-                display_three(confirm_combo, change_index);
+
+        } else {
+            // confirmation entry
+            if (digit <= 9 && change_index < 6) {
+                confirm_combo[change_index++] = digit;
+            }
+            // update display just like above
+            {
+                char buf[9];
+                for (int grp = 0; grp < 3; grp++) {
+                    int idx = 2 * grp;
+                    buf[3 * grp + 0] = (change_index > idx)
+                                           ? ('0' + confirm_combo[idx])
+                                           : '_';
+                    buf[3 * grp + 1] = (change_index > idx + 1)
+                                           ? ('0' + confirm_combo[idx + 1])
+                                           : '_';
+                    buf[3 * grp + 2] = (grp < 2 ? '-' : '\0');
+                }
+                buf[8] = '\0';
+                display_string(5, buf);
             }
         }
         break;
@@ -290,29 +333,6 @@ static void display_entry(void) {
     display_string(4, buf);
 }
 
-static void display_three(volatile char *vals, uint8_t count) {
-    char buf[9];
-
-    for (int i = 0; i < 3; i++) {
-        if (i < count) {
-            uint8_t v = vals[i];
-            if (v > 15)
-                v = 15;
-            buf[i * 3 + 0] = '0' + (v / 10);
-            buf[i * 3 + 1] = '0' + (v % 10);
-        } else {
-            buf[i * 3 + 0] = '_';
-            buf[i * 3 + 1] = '_';
-        }
-
-        buf[i * 3 + 2] = (i < 2 ? '-' : '\0');
-    }
-
-    buf[8] = '\0';
-
-    display_string(4, buf);
-}
-
 static void reset_entry() {
     entry[0] = entry[1] = entry[2] = 0;
     pass_count[0] = pass_count[1] = pass_count[2] = 0;
@@ -323,13 +343,16 @@ static void reset_entry() {
 }
 
 static bool is_attempt_correct(void) {
-    // return (pass_count[0] >= 3 &&
-    //         pass_count[1] >= 2 &&
-    //         pass_count[2] == 1) &&
-    //        (entry[0] == combination[0] &&
-    //         entry[1] == combination[1] &&
-    //         entry[2] == combination[2]);
-    return true;
+    return (pass_count[0] >= 3 &&
+            pass_count[1] >= 2 &&
+            pass_count[2] == 1) &&
+           (entry[0] == combination[0] &&
+            entry[1] == combination[1] &&
+            entry[2] == combination[2]);
+}
+
+static uint32_t get_microseconds(void) {
+    return timer->raw_lower_word;
 }
 
 static void handle_attempt(void) {
@@ -345,11 +368,23 @@ static void handle_attempt(void) {
         for (uint8_t i = 0; i < bad_tries && bad_tries < 3; i++) {
             cowpi_illuminate_left_led();
             cowpi_illuminate_right_led();
-            busy_wait_ms(250);
+
+            uint32_t start_time = get_microseconds();
+            while ((get_microseconds() - start_time) < 250000) {
+                // Busy wait loop
+            }
+
             cowpi_deluminate_left_led();
             cowpi_deluminate_right_led();
-            busy_wait_ms(250);
+            display_string(5, "");
+
+            start_time = get_microseconds();
+            while ((get_microseconds() - start_time) < 250000) {
+                // Busy wait loop
+            }
         }
+
+        cowpi_illuminate_left_led();
 
         if (bad_tries >= 3) {
             mode = ALARMED;

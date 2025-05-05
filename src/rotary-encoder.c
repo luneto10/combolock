@@ -22,8 +22,8 @@
 #include "display.h"
 // clang-format on
 
-#define A_WIPER_PIN (16)
-#define B_WIPER_PIN (A_WIPER_PIN + 1)
+#define A_WIPER_PIN (16u)
+#define B_WIPER_PIN (17u)
 
 typedef enum {
     HIGH_HIGH,
@@ -34,9 +34,10 @@ typedef enum {
 } rotation_state_t;
 
 char debug_buffer[22];
-const char *states[] = {"L_L", "L_H", "H_L", "H_H", "U_K"};
+const char *states[] = {"H_H", "H_L", "L_L", "L_H", "U_K"};
 volatile cowpi_ioport_t *ioport = (cowpi_ioport_t *)(0xD0000000);
 static rotation_state_t volatile state;
+static rotation_state_t volatile last_state;
 static direction_t volatile direction = STATIONARY;
 static int volatile clockwise_count = 0;
 static int volatile counterclockwise_count = 0;
@@ -46,9 +47,13 @@ static void handle_quadrature_interrupt();
 void initialize_rotary_encoder() {
     cowpi_set_pullup_input_pins((1 << A_WIPER_PIN) | (1 << B_WIPER_PIN));
 
-    state = get_quadrature();
+    state = HIGH_HIGH;
+    last_state = state;
     direction = STATIONARY;
 
+    // sprintf(debug_buffer, "%s %s", states[state], states[last_state]);
+    // display_string(0, debug_buffer);
+    get_quadrature();
     clockwise_count = 0;
     counterclockwise_count = 0;
 
@@ -56,9 +61,11 @@ void initialize_rotary_encoder() {
 }
 
 uint8_t get_quadrature() {
-    uint8_t A = (ioport->input >> A_WIPER_PIN) & 0x1;
-    uint8_t B = (ioport->input >> B_WIPER_PIN) & 0x1;
-    return (B << 1) | (A << 0);
+    uint32_t quadrature = ioport->input & (3 << 16);
+    uint8_t shifted_quadrature = quadrature >> 16;
+    sprintf(debug_buffer, "%d", shifted_quadrature);
+    display_string(0, debug_buffer);
+    return shifted_quadrature;
 }
 
 char *count_rotations(char *buffer) {
@@ -73,35 +80,61 @@ direction_t get_direction() {
 }
 
 static void handle_quadrature_interrupt() {
-    static rotation_state_t last_state = HIGH_HIGH; // Initialize to a valid state
     uint8_t quadrature = get_quadrature();
-    rotation_state_t next_state = state; // Initialize next_state to current state
 
-    switch (quadrature) {
-    case 0b00: // LOW_LOW
-        if (state == HIGH_LOW && last_state == HIGH_HIGH) {
-            clockwise_count++;
-            direction = CLOCKWISE;
-        } else if (state == LOW_HIGH && last_state == HIGH_HIGH) {
-            counterclockwise_count++;
-            direction = COUNTERCLOCKWISE;
+    // sprintf(debug_buffer, "%s %s %d", states[last_state],states[state], quadrature);
+    // display_string(0, debug_buffer);
+
+    switch (state) {
+        case HIGH_HIGH:
+            if (quadrature == 0b01){
+                last_state = state;
+                state = LOW_HIGH;
+            }
+            else if(quadrature == 0b10){
+                last_state = state;
+                state = HIGH_LOW;
+            }
+            break;
+
+        case LOW_HIGH:
+            if (quadrature == 0b11){
+                state = HIGH_HIGH;
+                last_state = state;
+            }
+            else if (quadrature == 0b00 && last_state == HIGH_HIGH){
+                counterclockwise_count++;
+                direction = COUNTERCLOCKWISE;
+                last_state = state;
+                state = LOW_LOW;
+            }
+            break;
+
+        case HIGH_LOW:
+            if (quadrature == 0b11){
+                state = HIGH_HIGH;
+                last_state = state;
+            }
+            else if (quadrature == 0b00 && last_state == HIGH_HIGH){
+                clockwise_count++;
+                direction = CLOCKWISE;
+                last_state = state;
+                state = LOW_LOW;
+            }
+            break;
+
+        case LOW_LOW:
+            if (quadrature == 0b01 && last_state == HIGH_LOW){
+                last_state = state;
+                state = LOW_HIGH;
+            }
+            else if (quadrature == 0b10 && last_state == LOW_HIGH){
+                last_state = state;
+                state = HIGH_LOW;
+            }
+            break;
+
+        default:
+            break;
         }
-        next_state = LOW_LOW;
-        break;
-
-    case 0b01: // LOW_HIGH
-        next_state = LOW_HIGH;
-        break;
-
-    case 0b10: // HIGH_LOW
-        next_state = HIGH_LOW;
-        break;
-
-    case 0b11: // HIGH_HIGH
-        next_state = HIGH_HIGH;
-        break;
-    }
-
-    last_state = state;
-    state = next_state;
 }

@@ -43,7 +43,6 @@ static volatile char new_combo[6];
 static volatile char confirm_combo[6];
 static volatile uint8_t change_phase;
 static volatile uint8_t change_index;
-static volatile uint8_t starter_flag;
 
 static volatile cowpi_timer_t *timer;
 
@@ -64,13 +63,6 @@ void force_combination_reset() {
 }
 
 void initialize_lock_controller() {
-
-    // Set password to 5, 10, 15 only when the program boots up.
-    if (starter_flag < 1) {
-        force_combination_reset();
-        starter_flag++;
-    }
-
     timer = (cowpi_timer_t *)(0x40054000);
 
     mode = LOCKED;
@@ -93,10 +85,6 @@ void initialize_lock_controller() {
 
 void control_lock() {
     direction_t dir = get_direction();
-
-    if (starter_flag < 1) {
-        initialize_lock_controller();
-    }
 
     switch (mode) {
     case LOCKED: {
